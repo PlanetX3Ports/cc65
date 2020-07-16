@@ -1,0 +1,167 @@
+ifneq ($(shell echo),)
+  CMD_EXE = 1
+endif
+
+PROGS = ar65     \
+        ca65     \
+        cc65     \
+        chrcvt65 \
+        cl65     \
+        co65     \
+        da65     \
+        grc65    \
+        ld65     \
+        od65     \
+        sim65    \
+        sp65
+
+.PHONY: all mostlyclean clean install zip avail unavail bin $(PROGS)
+
+.SUFFIXES:
+
+srcdir = @srcdir@
+builddir = @builddir@
+outdir = @outdir@
+
+prefix := @prefix@
+
+bindir  := @bindir@
+datadir := @datadir@
+
+CA65_INC = $(datadir)/asminc
+CC65_INC = $(datadir)/include
+CL65_TGT = $(datadir)/target
+LD65_LIB = $(datadir)/lib
+LD65_OBJ = $(datadir)/lib
+LD65_CFG = $(datadir)/cfg
+
+ifdef CMD_EXE
+  NULLDEV = nul:
+  DIRLIST = $(strip $(foreach dir,$1,$(wildcard $(dir))))
+  MKDIR = mkdir $(subst /,\,$1)
+  RMDIR = $(if $(DIRLIST),rmdir /s /q $(subst /,\,$(DIRLIST)))
+else
+  NULLDEV = /dev/null
+  MKDIR = mkdir -p $1
+  RMDIR = $(RM) -r $1
+endif
+
+CC = @CC@
+CFLAGS = @CFLAGS@
+LDFLAGS = @LDFLAGS@
+
+
+ifndef BUILD_ID
+  BUILD_ID := Git $(shell git rev-parse --short HEAD 2>$(NULLDEV) || svnversion 2>$(NULLDEV))
+  ifneq ($(words $(BUILD_ID)),2)
+    BUILD_ID := N/A
+  endif
+endif
+$(info BUILD_ID: $(BUILD_ID))
+
+CFLAGS += -MMD -MP -O3 -I@srcdir@/common \
+          -Wall -Wextra -Wno-char-subscripts \
+          -DCA65_INC="$(CA65_INC)" -DCC65_INC="$(CC65_INC)" -DCL65_TGT="$(CL65_TGT)" \
+          -DLD65_LIB="$(LD65_LIB)" -DLD65_OBJ="$(LD65_OBJ)" -DLD65_CFG="$(LD65_CFG)" \
+          -DBUILD_ID="$(BUILD_ID)"
+
+LDLIBS += -lm @LIBS@
+
+EXE_SUFFIX=@EXEEXT@
+
+
+all bin: $(PROGS)
+
+mostlyclean:
+	$(call RMDIR,@builddir@/wrk)
+
+clean:
+	$(call RMDIR,@builddir@/wrk @top_builddir@/bin)
+
+ifdef CMD_EXE
+
+install avail unavail:
+
+else # CMD_EXE
+
+INSTALL = @install@
+
+@top_builddir@/bin/:
+	$(call MKDIR,$@)
+
+define AVAIL_recipe
+
+ln -s $(abspath @top_builddir@/bin/$(prog)) /usr/local/bin/$(prog)
+
+endef # AVAIL_recipe
+
+define UNAVAIL_recipe
+
+$(RM) /usr/local/bin/$(prog)
+
+endef # UNAVAIL_recipe
+
+install:
+	$(if $(PREFIX),,$(error variable "PREFIX" must be set))
+	$(INSTALL) -d $(DESTDIR)$(bindir)
+	$(INSTALL) @top_builddir@/bin/* $(DESTDIR)$(bindir)
+
+avail:
+	$(foreach prog,$(PROGS),$(AVAIL_recipe))
+
+unavail:
+	$(foreach prog,$(PROGS),$(UNAVAIL_recipe))
+
+endif # CMD_EXE
+
+zip:
+	@cd .. && zip cc65 bin/*
+
+define OBJS_template
+
+$1_OBJS := $$(patsubst @srcdir@/%.c,@builddir@/wrk/%.o,$$(wildcard @srcdir@/$1/*.c))
+
+$$($1_OBJS): | @builddir@/wrk/$1 @builddir@/Makefile
+
+@builddir@/wrk/$1:
+	@$$(call MKDIR,$$@)
+
+DEPS += $$($1_OBJS:.o=.d)
+
+endef # OBJS_template
+
+define PROG_template
+
+$$(eval $$(call OBJS_template,$1))
+
+@top_builddir@/bin/$1$(EXE_SUFFIX): $$($1_OBJS) @builddir@/wrk/common/common.a | @top_builddir@/bin/ @builddir@/Makefile
+	$$(CC) $$(LDFLAGS) -o $$@ $$^ $$(LDLIBS)
+
+$1: @top_builddir@/bin/$1$(EXE_SUFFIX)
+
+endef # PROG_template
+
+@builddir@/Makefile: @srcdir@/Makefile.in @builddir@/config.status
+	@@builddir@/config.status
+
+@builddir@/config.status: @srcdir@/configure
+	@@builddir@/config.status --recheck
+
+@srcdir@/configure: @srcdir@/configure.ac
+	@autoreconf @srcdir@
+
+@builddir@/wrk/%.o: @srcdir@/%.c
+	@echo $<
+	@$(CC) -c $(CFLAGS) -o $@ $<
+
+@builddir@/bin:
+	@$(call MKDIR,$@)
+
+$(eval $(call OBJS_template,common))
+
+@builddir@/wrk/common/common.a: $(common_OBJS)
+	$(AR) r $@ $?
+
+$(foreach prog,$(PROGS),$(eval $(call PROG_template,$(prog))))
+
+-include $(DEPS)

@@ -1,0 +1,8 @@
+AC_INIT([cc65-src],1.0)
+
+AC_PROG_CC
+AC_PROG_INSTALL
+
+AC_CONFIG_FILES([Makefile])
+
+AC_OUTPUT
