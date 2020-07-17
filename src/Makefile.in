@@ -24,7 +24,7 @@ builddir = @builddir@
 outdir = @outdir@
 
 prefix := @prefix@
-
+exec_prefix := @exec_prefix@
 bindir  := @bindir@
 datadir := @datadir@
 
@@ -84,7 +84,7 @@ install avail unavail:
 
 else # CMD_EXE
 
-INSTALL = @install@
+INSTALL = @INSTALL@
 
 @top_builddir@/bin/:
 	$(call MKDIR,$@)
@@ -102,7 +102,6 @@ $(RM) /usr/local/bin/$(prog)
 endef # UNAVAIL_recipe
 
 install:
-	$(if $(PREFIX),,$(error variable "PREFIX" must be set))
 	$(INSTALL) -d $(DESTDIR)$(bindir)
 	$(INSTALL) @top_builddir@/bin/* $(DESTDIR)$(bindir)
 
